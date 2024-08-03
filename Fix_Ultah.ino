@@ -57,13 +57,22 @@ bool motorStatus2 = false;
 // declare GPIO sensor
 const int input1 = 18;
 const int input2 = 19;
+bool sensor1Processed = false;
+bool sensor2Processed = false;
+unsigned long lastSensor1ProcessTime = 0;
+unsigned long lastSensor2ProcessTime = 0;
+const unsigned long sensorProcessInterval = 10000; // 10 seconds
 
-char serverAddress[] = "192.168.1.181"; // server address
+char serverAddress[] = "reydi.teknik-komputer.com"; // server address
 int port = 80;
 
 // http client
 WiFiClient client;
 HttpClient http = HttpClient(client, serverAddress, port);
+
+//
+unsigned long lastResetTime = 0;
+const unsigned long resetInterval = 10000;
 
 void initWiFi()
 {
@@ -151,7 +160,7 @@ bool checkKeyCode(String key_code)
     serializeJson(doc, postData);
 
     // Mengirim HTTP POST request
-    http.post("/skripsivm/php/api-key-order.php", "application/json", postData);
+    http.post("/php/api-key-order.php", "application/json", postData);
 
     // Membaca status kode dan respons dari server
     int statusCode = http.responseStatusCode();
@@ -179,7 +188,7 @@ bool checkKeyCode(String key_code)
     return isValid;
 }
 
-void sendStockStatus(int ProductId, int jumlahproduk)
+/*void sendStockStatus(int ProductId, int jumlahproduk)
 {
     // Mengupdate stok di server
     String contentType = "application/json";
@@ -221,11 +230,38 @@ void sendStockStatus(int ProductId, int jumlahproduk)
     Serial.print("Response: ");
     Serial.println(response);
 }
+*/
+
+void sendStockStatus(int idp, int jumlah, const char *nama_sensor, bool status)
+{
+    // Membuat objek JSON
+    StaticJsonDocument<200> doc;
+    doc["id_produk"] = idp;
+    doc["jumlah"] = jumlah;
+    doc["nama_sensor"] = nama_sensor;
+    doc["status"] = status;
+
+    // Serialisasi JSON ke string
+    String postData;
+    serializeJson(doc, postData);
+
+    // Mengirim HTTP POST request
+    http.post("/php/api-sensor.php", "application/json", postData);
+
+    // Membaca status kode dan respons dari server
+    int statusCode = http.responseStatusCode();
+    String response = http.responseBody();
+
+    Serial.print("Status code: ");
+    Serial.println(statusCode);
+    Serial.print("Response: ");
+    Serial.println(response);
+}
 
 void motor()
 {
     Serial.println("Validating with the API...");
-    String serverName = "/skripsivm/php/api-get-produk.php";
+    String serverName = "/php/api-get-produk.php";
     String serverPath = serverName + "?midtrans_order_id=" + input_keypad_code;
     http.get(serverPath);
 
@@ -258,14 +294,12 @@ void motor()
 
         if (idp == 1)
         {
-            sendStockStatus(idp, jumlah);
             digitalWrite(MOTOR_PIN1, LOW);
 
             motorStatus1 = true;
         }
         if (idp == 2)
         {
-            sendStockStatus(idp, jumlah);
             digitalWrite(MOTOR_PIN2, LOW);
 
             motorStatus2 = true;
@@ -346,28 +380,42 @@ void keypadEvent(KeypadEvent key)
     }
 }
 
+/*
 void sensor()
 {
-    // state read
+    // Baca status sensor
     int state1 = digitalRead(input1);
     int state2 = digitalRead(input2);
 
     Serial.print(state1);
     Serial.print("-");
     Serial.println(state2);
-    if (state1 == LOW)
+
+    if (state1 == LOW && !sensor1Processed)
     {
+        sensor1Processed = true; // Tandai sensor1 telah diproses
         motorStatus1 = false;
         Serial.println("Motor1 Mati");
+        // Kirim data sensor 1 ke API
+        int idp = 1;
+        int jumlah = 1;
+        const char *nama_sensor = "Sensor1";
+        sendStockStatus(idp, jumlah, nama_sensor, false);
     }
-    // else{
-    //   Serial.println("Motorhidup");
-    // }
-    if (state2 == LOW)
+
+    if (state2 == LOW && !sensor2Processed)
     {
+        sensor2Processed = true; // Tandai sensor2 telah diproses
         motorStatus2 = false;
         Serial.println("Motor2 Mati");
+        // Kirim data sensor 2 ke API
+        int idp = 2;
+        int jumlah = 1;
+        const char *nama_sensor = "Sensor2";
+        sendStockStatus(idp, jumlah, nama_sensor, false);
     }
+
+    // Aktifkan motor jika diperlukan
     if (!motorStatus1)
     {
         digitalWrite(MOTOR_PIN1, HIGH);
@@ -376,12 +424,70 @@ void sensor()
     {
         digitalWrite(MOTOR_PIN2, HIGH);
     }
-    delay(10);
 
-    // else
-    // {
-    //     Serial.println("All Sensor Clear");
-    // }
+    delay(10);
+}
+*/
+
+void sensor()
+{
+    // Read sensor states
+    int state1 = digitalRead(input1);
+    int state2 = digitalRead(input2);
+
+    Serial.print(state1);
+    Serial.print("-");
+    Serial.println(state2);
+
+    unsigned long currentMillis = millis();
+
+    if (state1 == LOW && !sensor1Processed)
+    {
+        sensor1Processed = true;                // Mark sensor1 as processed
+        lastSensor1ProcessTime = currentMillis; // Record the time when the sensor was processed
+        motorStatus1 = false;
+        Serial.println("Motor1 Off");
+        // Send sensor 1 data to API
+        int idp = 1;
+        int jumlah = 1;
+        const char *nama_sensor = "Sensor1";
+        sendStockStatus(idp, jumlah, nama_sensor, false);
+    }
+
+    if (state2 == LOW && !sensor2Processed)
+    {
+        sensor2Processed = true;                // Mark sensor2 as processed
+        lastSensor2ProcessTime = currentMillis; // Record the time when the sensor was processed
+        motorStatus2 = false;
+        Serial.println("Motor2 Off");
+        // Send sensor 2 data to API
+        int idp = 2;
+        int jumlah = 1;
+        const char *nama_sensor = "Sensor2";
+        sendStockStatus(idp, jumlah, nama_sensor, false);
+    }
+
+    // Reactivate motor if needed
+    if (!motorStatus1)
+    {
+        digitalWrite(MOTOR_PIN1, HIGH);
+    }
+    if (!motorStatus2)
+    {
+        digitalWrite(MOTOR_PIN2, HIGH);
+    }
+
+    // Reset the processed flags after the interval has passed
+    if (sensor1Processed && (currentMillis - lastSensor1ProcessTime >= sensorProcessInterval))
+    {
+        sensor1Processed = false;
+    }
+    if (sensor2Processed && (currentMillis - lastSensor2ProcessTime >= sensorProcessInterval))
+    {
+        sensor2Processed = false;
+    }
+
+    delay(10);
 }
 
 void setup()
@@ -478,4 +584,7 @@ void loop()
     }
     */
     sensor();
+    // Reset variabel status jika interval waktu telah berlalu
+    lastSensor1ProcessTime = millis();
+    lastSensor2ProcessTime = millis();
 }
