@@ -63,7 +63,7 @@ unsigned long lastSensor1ProcessTime = 0;
 unsigned long lastSensor2ProcessTime = 0;
 const unsigned long sensorProcessInterval = 10000; // 10 seconds
 
-char serverAddress[] = "reydi.teknik-komputer.com"; // server address
+char serverAddress[] = "reydivm.teknik-komputer.com"; // server address
 int port = 80;
 
 // http client
